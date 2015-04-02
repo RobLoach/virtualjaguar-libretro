@@ -5,7 +5,7 @@
 #ifndef __DAC_H__
 #define __DAC_H__
 
-#include "vjag_memory.h"
+#include "memory.h"
 
 void DACInit(void);
 void DACReset(void);
@@ -20,8 +20,6 @@ void DACWriteWord(uint32_t offset, uint16_t data, uint32_t who = UNKNOWN);
 uint8_t DACReadByte(uint32_t offset, uint32_t who = UNKNOWN);
 uint16_t DACReadWord(uint32_t offset, uint32_t who = UNKNOWN);
 
-void SDLSoundCallback(void * userdata, uint16_t * buffer, int length);
-extern uint16_t *sampleBuffer;
 
 // DAC defines
 

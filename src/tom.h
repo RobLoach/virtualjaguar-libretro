@@ -5,7 +5,7 @@
 #ifndef __TOM_H__
 #define __TOM_H__
 
-#include "vjag_memory.h"
+#include "memory.h"
 
 #define VIDEO_MODE_16BPP_CRY	0
 #define VIDEO_MODE_24BPP_RGB	1
@@ -41,6 +41,9 @@ uint8_t TOMGetVideoMode(void);
 uint8_t * TOMGetRamPointer(void);
 uint16_t TOMGetHDB(void);
 uint16_t TOMGetVDB(void);
+uint16_t TOMGetHC(void);
+uint16_t TOMGetVP(void);
+void TOMDumpIORegistersToLog(void);
 
 int TOMIRQEnabled(int irq);
 uint16_t TOMIRQControlReg(void);

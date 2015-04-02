@@ -5,7 +5,8 @@
 #ifndef __BLITTER_H__
 #define __BLITTER_H__
 
-#include "vjag_memory.h"
+//#include "types.h"
+#include "memory.h"
 
 void BlitterInit(void);
 void BlitterReset(void);

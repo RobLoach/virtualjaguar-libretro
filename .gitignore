@@ -3,3 +3,16 @@
 *.dll
 *.dylib
 *.exe
+makefile-qt
+obj/
+src/m68000/obj/
+src/version.h
+virtualjaguar
+virtualjaguar.log
+src/*~
+src/m68000/*~
+eeproms/*.eep
+software/
+build/
+regression-test/
+*~

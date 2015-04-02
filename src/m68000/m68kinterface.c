@@ -661,8 +661,8 @@ unsigned int m68k_disassemble(char * str_buff, unsigned int pc, unsigned int cpu
 }
 #endif
 
-int m68k_cycles_run(void) { return 0; }              /* Number of cycles run so far */
-int m68k_cycles_remaining(void) { return 0; }        /* Number of cycles left */
+int m68k_cycles_run(void) {}              /* Number of cycles run so far */
+int m68k_cycles_remaining(void) {}        /* Number of cycles left */
 //void m68k_modify_timeslice(int cycles) {} /* Modify cycles left */
 //void m68k_end_timeslice(void) {}          /* End timeslice now */
 

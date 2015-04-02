@@ -6,7 +6,7 @@
 #define __CDROM_H__
 
 //#include "types.h"
-#include "vjag_memory.h"
+#include "memory.h"
 
 void CDROMInit(void);
 void CDROMReset(void);

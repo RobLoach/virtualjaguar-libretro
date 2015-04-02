@@ -5,13 +5,17 @@
 #ifndef __SETTINGS_H__
 #define __SETTINGS_H__
 
-#include <stdlib.h>								// for MAX_PATH on MinGW/Darwin
+// MAX_PATH isn't defined in stdlib.h on *nix, so we do it here...
+#ifdef __GCCUNIX__
 #include <limits.h>
-
+#define MAX_PATH		_POSIX_PATH_MAX
+#else
+#include <stdlib.h>				// for MAX_PATH on MinGW/Darwin
+// Kludge for Win64
 #ifndef MAX_PATH
-#define MAX_PATH		4096
+#define MAX_PATH _MAX_PATH		// Urgh.
 #endif
-
+#endif
 #include <stdint.h>
 
 // Settings struct
@@ -19,8 +23,8 @@
 struct VJSettings
 {
 	bool useJoystick;
-	int32_t joyport;								// Joystick port
-	bool hardwareTypeNTSC;						// Set to false for PAL
+	int32_t joyport;			// Joystick port
+	bool hardwareTypeNTSC;		// Set to false for PAL
 	bool useJaguarBIOS;
 	bool GPUEnabled;
 	bool DSPEnabled;

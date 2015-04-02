@@ -264,7 +264,7 @@
 #include "jaguar.h"
 #include "log.h"
 #include "m68000/m68kinterface.h"
-//#include "vjag_memory.h"
+//#include "memory.h"
 #include "op.h"
 #include "settings.h"
 
@@ -307,6 +307,7 @@
 #define HEQ			0x54		// Horizontal equalization end
 #define BG			0x58		// Background color
 #define INT1		0xE0
+#define INT2		0xE2
 
 //NOTE: These arbitrary cutoffs are NOT taken into account for PAL jaguar screens. !!! FIX !!! [DONE]
 
@@ -578,10 +579,11 @@ void TOMFillLookupTables(void)
 //			| ((i & 0xF100) >> 8)  | ((i & 0xE000) >> 13)
 //			| ((i & 0x07C0) << 13) | ((i & 0x0700) << 8)
 //			| ((i & 0x003F) << 10) | ((i & 0x0030) << 4);
-		RGB16ToRGB32[i] = 0xFF000000
-			| ((i & 0xF100) << 8)					// Red
-			| ((i & 0x003F) << 10)					// Green
-			| ((i & 0x07C0) >> 3);					// Blue
+		RGB16ToRGB32[i] = 0x000000FF
+//			| ((i & 0xF100) << 16)					// Red
+			| ((i & 0xF800) << 16)					// Red
+			| ((i & 0x003F) << 18)					// Green
+			| ((i & 0x07C0) << 5);					// Blue
 
 	for(uint32_t i=0; i<0x10000; i++)
 	{
@@ -594,7 +596,7 @@ void TOMFillLookupTables(void)
 			b = (((uint32_t)bluecv[cyan][red]) * intensity) >> 8;
 
 //hm.		CRY16ToRGB32[i] = 0xFF000000 | (b << 16) | (g << 8) | r;
-		CRY16ToRGB32[i] = 0xFF000000 | (r << 16) | (g << 8) | (b << 0);
+		CRY16ToRGB32[i] = 0x000000FF | (r << 24) | (g << 16) | (b << 8);
 		MIX16ToRGB32[i] = (i & 0x01 ? RGB16ToRGB32[i] : CRY16ToRGB32[i]);
 	}
 }
@@ -651,6 +653,18 @@ uint16_t TOMGetVDB(void)
 }
 
 
+uint16_t TOMGetHC(void)
+{
+	return GET16(tomRam8, HC);
+}
+
+
+uint16_t TOMGetVP(void)
+{
+	return GET16(tomRam8, VP);
+}
+
+
 #define LEFT_BG_FIX
 //
 // 16 BPP CRY/RGB mixed mode rendering
@@ -682,7 +696,7 @@ void tom_render_16bpp_cry_rgb_mix_scanline(uint32_t * backbuffer)
 #ifdef LEFT_BG_FIX
 	{
 		uint8_t g = tomRam8[BORD1], r = tomRam8[BORD1 + 1], b = tomRam8[BORD2 + 1];
-		uint32_t pixel = 0xFF000000 | (r << 16) | (g << 8) | (b << 0);
+		uint32_t pixel = 0x000000FF | (r << 24) | (g << 16) | (b << 8);
 
 		for(int16_t i=0; i<startPos; i++)
 			*backbuffer++ = pixel;
@@ -723,7 +737,7 @@ void tom_render_16bpp_cry_scanline(uint32_t * backbuffer)
 #ifdef LEFT_BG_FIX
 	{
 		uint8_t g = tomRam8[BORD1], r = tomRam8[BORD1 + 1], b = tomRam8[BORD2 + 1];
-		uint32_t pixel = 0xFF000000 | (r << 16) | (g << 8) | (b << 0);
+		uint32_t pixel = 0x000000FF | (r << 24) | (g << 16) | (b << 8);
 
 		for(int16_t i=0; i<startPos; i++)
 			*backbuffer++ = pixel;
@@ -770,7 +784,7 @@ void tom_render_24bpp_scanline(uint32_t * backbuffer)
 #ifdef LEFT_BG_FIX
 	{
 		uint8_t g = tomRam8[BORD1], r = tomRam8[BORD1 + 1], b = tomRam8[BORD2 + 1];
-		uint32_t pixel = 0xFF000000 | (r << 16) | (g << 8) | (b << 0);
+		uint32_t pixel = 0x000000FF | (r << 24) | (g << 16) | (b << 8);
 
 		for(int16_t i=0; i<startPos; i++)
 			*backbuffer++ = pixel;
@@ -789,14 +803,14 @@ void tom_render_24bpp_scanline(uint32_t * backbuffer)
 		current_line_buffer++;
 		uint32_t b = *current_line_buffer++;
 //hm.		*backbuffer++ = 0xFF000000 | (b << 16) | (g << 8) | r;
-		*backbuffer++ = 0xFF000000 | (r << 16) | (g << 8) | (b << 0);
+		*backbuffer++ = 0x000000FF | (r << 24) | (g << 16) | (b << 8);
 		width--;
 	}
 }
 
 
-//Seems to me that this is NOT a valid mode--the JTRM seems to imply that you would need
-//extra hardware outside of the Jaguar console to support this!
+// Seems to me that this is NOT a valid mode--the JTRM seems to imply that you
+// would need extra hardware outside of the Jaguar console to support this!
 //
 // 16 BPP direct mode rendering
 //
@@ -838,7 +852,7 @@ void tom_render_16bpp_rgb_scanline(uint32_t * backbuffer)
 #ifdef LEFT_BG_FIX
 	{
 		uint8_t g = tomRam8[BORD1], r = tomRam8[BORD1 + 1], b = tomRam8[BORD2 + 1];
-		uint32_t pixel = 0xFF000000 | (r << 16) | (g << 8) | (b << 0);
+		uint32_t pixel = 0x000000FF | (r << 24) | (g << 16) | (b << 8);
 
 		for(int16_t i=0; i<startPos; i++)
 			*backbuffer++ = pixel;
@@ -861,37 +875,36 @@ void tom_render_16bpp_rgb_scanline(uint32_t * backbuffer)
 
 
 //
-// Process a single scanline
-// (this is bad terminology; each tick of the VC is actually a half-line)
+// Process a single halfline
 //
 void TOMExecHalfline(uint16_t halfline, bool render)
 {
-#warning "!!! Need to handle multiple fields properly !!!"
-	// We ignore the problem for now
-	halfline &= 0x7FF;
-
+	uint16_t field2 = halfline & 0x0800;
+	halfline &= 0x07FF;
 	bool inActiveDisplayArea = true;
 
-//Interlacing is still not handled correctly here... !!! FIX !!!
-	if (halfline & 0x01)							// Execute OP only on even halflines (non-interlaced only!)
+	// Execute OP only on even halflines (skip higher resolutions for now...)
+	if (halfline & 0x01)
 		return;
 
 //Hm, it seems that the OP needs to execute from zero, so let's try it:
-// And it works! But need to do some optimizations in the OP to keep it from attempting
-// to do a scanline render in the non-display area... [DONE]
+// And it works! But need to do some optimizations in the OP to keep it from
+// attempting to do a scanline render in the non-display area... [DONE]
 //this seems to cause a regression in certain games, like rayman
 //which means I have to dig thru the asic nets to see what's wrong...
 /*
-No, the OP doesn't start until VDB, that much is certain. The thing is, VDB is the
-HALF line that the OP starts on--which means that it needs to start at VDB / 2!!!
+No, the OP doesn't start until VDB, that much is certain. The thing is, VDB is
+the HALF line that the OP starts on--which means that it needs to start at
+VDB / 2!!!
 
-Hrm, doesn't seem to be enough, though it should be... still sticks for 20 frames.
+Hrm, doesn't seem to be enough, though it should be... still sticks for 20
+frames.
 
 
-What triggers this is writing $FFFF to VDE. This causes the OP start signal in VID to 
-latch on, which in effect sets VDB to zero. So that much is correct. But the thing with
-Rayman is that it shouldn't cause the graphical glitches seen there, so still have to
-investigate what's going on there. By all rights, it shouldn't glitch because:
+What triggers this is writing $FFFF to VDE. This causes the OP start signal in VID to latch on, which in effect sets VDB to zero. So that much is correct. But
+the thing with Rayman is that it shouldn't cause the graphical glitches seen
+there, so still have to investigate what's going on there. By all rights, it
+shouldn't glitch because:
 
 00006C00: 0000000D 82008F73 (BRANCH) YPOS=494, CC=">", link=$00006C10
 00006C08: 000003FF 00008173 (BRANCH) YPOS=46, CC=">", link=$001FF800
@@ -899,8 +912,8 @@ investigate what's going on there. By all rights, it shouldn't glitch because:
 001FF800: 12FC2BFF 02380000 (BITMAP)
           00008004 8180CFF1
 
-Even if the OP is running all the time, the link should tell it to stop at the right
-place (which it seems to do). But we still get glitchy screen.
+Even if the OP is running all the time, the link should tell it to stop at the
+right place (which it seems to do). But we still get glitchy screen.
 
 Seems the glitchy screen went away... Maybe the GPU alignment fixes fixed it???
 Just need to add the proper checking here then.
@@ -928,18 +941,19 @@ TOM: Vertical Display Begin written by M68K: 41
 TOM: Vertical Display End written by M68K: 2047
 TOM: Vertical Interrupt written by M68K: 491
 */
-#if 1
+
 	// Initial values that "well behaved" programs use
 	uint16_t startingHalfline = GET16(tomRam8, VDB);
 	uint16_t endingHalfline = GET16(tomRam8, VDE);
 
 	// Simulate the OP start bug here!
 	// Really, this value is somewhere around 507 for an NTSC Jaguar. But this
-	// should work in a majority of cases, at least until we can figure it out properly.
+	// should work in a majority of cases, at least until we can figure it out
+	// properly.
 	if (endingHalfline > GET16(tomRam8, VP))
 		startingHalfline = 0;
 
-	if (halfline >= startingHalfline && halfline < endingHalfline)
+	if ((halfline >= startingHalfline) && (halfline < endingHalfline))
 //	if (halfline >= 0 && halfline < (uint16_t)GET16(tomRam8, VDE))
 // 16 isn't enough, and neither is 32 for raptgun. 32 fucks up Rayman
 //	if (halfline >= ((uint16_t)GET16(tomRam8, VDB) / 2) && halfline < ((uint16_t)GET16(tomRam8, VDE) / 2))
@@ -962,49 +976,33 @@ TOM: Vertical Interrupt written by M68K: 491
 	}
 	else
 		inActiveDisplayArea = false;
-#else
-	inActiveDisplayArea =
-		(halfline >= (uint16_t)GET16(tomRam8, VDB) && halfline < (uint16_t)GET16(tomRam8, VDE)
-			? true : false);
 
-	if (halfline < (uint16_t)GET16(tomRam8, VDE))
-	{
-		if (render)//With JaguarExecuteNew() this is always true...
-		{
-			uint8_t * current_line_buffer = (uint8_t *)&tomRam8[0x1800];
-			uint8_t bgHI = tomRam8[BG], bgLO = tomRam8[BG + 1];
-
-			// Clear line buffer with BG
-			if (GET16(tomRam8, VMODE) & BGEN) // && (CRY or RGB16)...
-				for(uint32_t i=0; i<720; i++)
-					*current_line_buffer++ = bgHI, *current_line_buffer++ = bgLO;
-
-//			OPProcessList(halfline, render);
-//This seems to take care of it...
-			OPProcessList(halfline, inActiveDisplayArea);
-		}
-	}
-#endif
-
-	// Try to take PAL into account... [We do now!]
+	// Take PAL into account...
 
 	uint16_t topVisible = (vjs.hardwareTypeNTSC ? TOP_VISIBLE_VC : TOP_VISIBLE_VC_PAL),
 		bottomVisible = (vjs.hardwareTypeNTSC ? BOTTOM_VISIBLE_VC : BOTTOM_VISIBLE_VC_PAL);
-	uint32_t * TOMCurrentLine = &(screenBuffer[((halfline - topVisible) / 2) * screenPitch]);
+	uint32_t * TOMCurrentLine = 0;
+
+	// Bit 0 in VP is interlace flag. 0 = interlace, 1 = non-interlaced
+	if (tomRam8[VP + 1] & 0x01)
+		TOMCurrentLine = &(screenBuffer[((halfline - topVisible) / 2) * screenPitch]);//non-interlace
+	else
+		TOMCurrentLine = &(screenBuffer[(((halfline - topVisible) / 2) * screenPitch * 2) + (field2 ? 0 : screenPitch)]);//interlace
 
 	// Here's our virtualized scanline code...
 
-	if (halfline >= topVisible && halfline < bottomVisible)
+	if ((halfline >= topVisible) && (halfline < bottomVisible))
 	{
 		if (inActiveDisplayArea)
 		{
-//NOTE: The following doesn't put BORDER color on the sides... !!! FIX !!!
 #warning "The following doesn't put BORDER color on the sides... !!! FIX !!!"
 			if (vjs.renderType == RT_NORMAL)
-//				scanline_render[TOMGetVideoMode()](TOMBackbuffer);
-				scanline_render[TOMGetVideoMode()](TOMCurrentLine);
-			else//TV type render
 			{
+				scanline_render[TOMGetVideoMode()](TOMCurrentLine);
+			}
+			else
+			{
+				// TV type render
 /*
 	tom_render_16bpp_cry_scanline,
 	tom_render_24bpp_scanline,
@@ -1021,13 +1019,14 @@ TOM: Vertical Interrupt written by M68K: 491
 				uint8_t pwidth = ((GET16(tomRam8, VMODE) & PWIDTH) >> 9) + 1;
 				uint8_t mode = ((GET16(tomRam8, VMODE) & MODE) >> 1);
 				bool varmod = GET16(tomRam8, VMODE) & VARMOD;
-//The video texture line buffer ranges from 0 to 1279, with its left edge starting at
-//LEFT_VISIBLE_HC. So, we need to start writing into the backbuffer at HDB1, using pwidth
-//as our scaling factor. The way it generates its image on a real TV!
+//The video texture line buffer ranges from 0 to 1279, with its left edge
+//starting at LEFT_VISIBLE_HC. So, we need to start writing into the backbuffer
+//at HDB1, using pwidth as our scaling factor. The way it generates its image
+//on a real TV!
 
-//So, for example, if HDB1 is less than LEFT_VISIBLE_HC, then we have to figure out where
-//in the VTLB that we start writing pixels from the Jaguar line buffer (VTLB start=0,
-//JLB=something).
+//So, for example, if HDB1 is less than LEFT_VISIBLE_HC, then we have to figure
+//out where in the VTLB that we start writing pixels from the Jaguar line
+//buffer (VTLB start=0, JLB=something).
 #if 0
 //
 // 24 BPP mode rendering
@@ -1069,7 +1068,7 @@ void tom_render_24bpp_scanline(uint32_t * backbuffer)
 			uint32_t * currentLineBuffer = TOMCurrentLine;
 			uint8_t g = tomRam8[BORD1], r = tomRam8[BORD1 + 1], b = tomRam8[BORD2 + 1];
 //Hm.			uint32_t pixel = 0xFF000000 | (b << 16) | (g << 8) | r;
-			uint32_t pixel = 0xFF000000 | (r << 16) | (g << 8) | (b << 0);
+			uint32_t pixel = 0x000000FF | (r << 24) | (g << 16) | (b << 8);
 
 			for(uint32_t i=0; i<tomWidth; i++)
 				*currentLineBuffer++ = pixel;
@@ -1092,6 +1091,7 @@ void TOMInit(void)
 
 void TOMDone(void)
 {
+	TOMDumpIORegistersToLog();
 	OPDone();
 	BlitterDone();
 	WriteLog("TOM: Resolution %i x %i %s\n", TOMGetVideoModeWidth(), TOMGetVideoModeHeight(),
@@ -1099,10 +1099,6 @@ void TOMDone(void)
 //	WriteLog("\ntom: object processor:\n");
 //	WriteLog("tom: pointer to object list: 0x%.8x\n",op_get_list_pointer());
 //	WriteLog("tom: INT1=0x%.2x%.2x\n",TOMReadByte(0xf000e0),TOMReadByte(0xf000e1));
-//	gpu_done();
-//	dsp_done();
-//	memory_free(tomRam8);
-//	memory_free(tom_cry_rgb_mix_lut);
 }
 
 
@@ -1258,6 +1254,7 @@ void TOMReset(void)
 	if (vjs.hardwareTypeNTSC)
 	{
 		SET16(tomRam8, MEMCON1, 0x1861);
+//		SET16(tomRam8, MEMCON1, 0x1865);//Bunch of BS
 		SET16(tomRam8, MEMCON2, 0x35CC);
 		SET16(tomRam8, HP, 844);			// Horizontal Period (1-based; HP=845)
 		SET16(tomRam8, HBB, 1713);			// Horizontal Blank Begin
@@ -1302,6 +1299,50 @@ void TOMReset(void)
 	tomTimerPrescaler = 0;					// TOM PIT is disabled
 	tomTimerDivider = 0;
 	tomTimerCounter = 0;
+}
+
+
+//
+// Dump all TOM register values to the log
+//
+void TOMDumpIORegistersToLog(void)
+{
+	WriteLog("\n\n---------------------------------------------------------------------\n");
+	WriteLog("TOM I/O Registers\n");
+	WriteLog("---------------------------------------------------------------------\n");
+	WriteLog("F000%02X (MEMCON1): $%04X\n", MEMCON1, GET16(tomRam8, MEMCON1));
+	WriteLog("F000%02X (MEMCON2): $%04X\n", MEMCON2, GET16(tomRam8, MEMCON2));
+	WriteLog("F000%02X      (HC): $%04X\n", HC,      GET16(tomRam8, HC));
+	WriteLog("F000%02X      (VC): $%04X\n", VC,      GET16(tomRam8, VC));
+	WriteLog("F000%02X     (OLP): $%08X\n", OLP,     GET32(tomRam8, OLP));
+	WriteLog("F000%02X     (OBF): $%04X\n", OBF,     GET16(tomRam8, OBF));
+	WriteLog("F000%02X   (VMODE): $%04X\n", VMODE,   GET16(tomRam8, VMODE));
+	WriteLog("F000%02X   (BORD1): $%04X\n", BORD1,   GET16(tomRam8, BORD1));
+	WriteLog("F000%02X   (BORD2): $%04X\n", BORD2,   GET16(tomRam8, BORD2));
+	WriteLog("F000%02X      (HP): $%04X\n", HP,      GET16(tomRam8, HP));
+	WriteLog("F000%02X     (HBB): $%04X\n", HBB,     GET16(tomRam8, HBB));
+	WriteLog("F000%02X     (HBE): $%04X\n", HBE,     GET16(tomRam8, HBE));
+	WriteLog("F000%02X      (HS): $%04X\n", HS,      GET16(tomRam8, HS));
+	WriteLog("F000%02X     (HVS): $%04X\n", HVS,     GET16(tomRam8, HVS));
+	WriteLog("F000%02X    (HDB1): $%04X\n", HDB1,    GET16(tomRam8, HDB1));
+	WriteLog("F000%02X    (HDB2): $%04X\n", HDB2,    GET16(tomRam8, HDB2));
+	WriteLog("F000%02X     (HDE): $%04X\n", HDE,     GET16(tomRam8, HDE));
+	WriteLog("F000%02X      (VP): $%04X\n", VP,      GET16(tomRam8, VP));
+	WriteLog("F000%02X     (VBB): $%04X\n", VBB,     GET16(tomRam8, VBB));
+	WriteLog("F000%02X     (VBE): $%04X\n", VBE,     GET16(tomRam8, VBE));
+	WriteLog("F000%02X      (VS): $%04X\n", VS,      GET16(tomRam8, VS));
+	WriteLog("F000%02X     (VDB): $%04X\n", VDB,     GET16(tomRam8, VDB));
+	WriteLog("F000%02X     (VDE): $%04X\n", VDE,     GET16(tomRam8, VDE));
+	WriteLog("F000%02X     (VEB): $%04X\n", VEB,     GET16(tomRam8, VEB));
+	WriteLog("F000%02X     (VEE): $%04X\n", VEE,     GET16(tomRam8, VEE));
+	WriteLog("F000%02X      (VI): $%04X\n", VI,      GET16(tomRam8, VI));
+	WriteLog("F000%02X    (PIT0): $%04X\n", PIT0,    GET16(tomRam8, PIT0));
+	WriteLog("F000%02X    (PIT1): $%04X\n", PIT1,    GET16(tomRam8, PIT1));
+	WriteLog("F000%02X     (HEQ): $%04X\n", HEQ,     GET16(tomRam8, HEQ));
+	WriteLog("F000%02X      (BG): $%04X\n", BG,      GET16(tomRam8, BG));
+	WriteLog("F000%02X    (INT1): $%04X\n", INT1,    GET16(tomRam8, INT1));
+	WriteLog("F000%02X    (INT2): $%04X\n", INT2,    GET16(tomRam8, INT2));
+	WriteLog("---------------------------------------------------------------------\n\n\n");
 }
 
 
@@ -1405,6 +1446,9 @@ if (offset >= 0xF02000 && offset <= 0xF020FF)
 //
 void TOMWriteByte(uint32_t offset, uint8_t data, uint32_t who/*=UNKNOWN*/)
 {
+	// Moved here tentatively, so we can see everything written to TOM.
+	tomRam8[offset & 0x3FFF] = data;
+
 #ifdef TOM_DEBUG
 	WriteLog("TOM: Writing byte %02X at %06X", data, offset);
 #endif
@@ -1479,7 +1523,7 @@ void TOMWriteByte(uint32_t offset, uint8_t data, uint32_t who/*=UNKNOWN*/)
 		tomRam8[offset] = data, tomRam8[offset + 0x200] = data;
 	}
 
-	tomRam8[offset & 0x3FFF] = data;
+//	tomRam8[offset & 0x3FFF] = data;
 }
 
 
@@ -1488,6 +1532,10 @@ void TOMWriteByte(uint32_t offset, uint8_t data, uint32_t who/*=UNKNOWN*/)
 //
 void TOMWriteWord(uint32_t offset, uint16_t data, uint32_t who/*=UNKNOWN*/)
 {
+	// Moved here tentatively, so we can see everything written to TOM.
+	tomRam8[(offset + 0) & 0x3FFF] = data >> 8;
+	tomRam8[(offset + 1) & 0x3FFF] = data & 0xFF;
+
 #ifdef TOM_DEBUG
 	WriteLog("TOM: Writing byte %04X at %06X", data, offset);
 #endif
@@ -1593,8 +1641,8 @@ if (offset >= 0xF02000 && offset <= 0xF020FF)
 		data &= 0x03FF;			// These are all 10-bit registers
 
 // Fix a lockup bug... :-P
-	TOMWriteByte(0xF00000 | offset, data >> 8, who);
-	TOMWriteByte(0xF00000 | (offset+1), data & 0xFF, who);
+//	TOMWriteByte(0xF00000 | offset, data >> 8, who);
+//	TOMWriteByte(0xF00000 | (offset+1), data & 0xFF, who);
 
 if (offset == MEMCON1)
 	WriteLog("TOM: Memory Config 1 written by %s: $%04X\n", whoName[who], data);
@@ -1606,8 +1654,8 @@ if (offset == MEMCON2)
 //	WriteLog("TOM: Object List Pointer +2 written by %s: $%04X\n", whoName[who], data);
 //if (offset == OBF)
 //	WriteLog("TOM: Object Processor Flag written by %s: %u\n", whoName[who], data);
-if (offset == VMODE)
-	WriteLog("TOM: Video Mode written by %s: %04X. PWIDTH = %u, MODE = %s, flags:%s%s (VC = %u)\n", whoName[who], data, ((data >> 9) & 0x07) + 1, videoMode_to_str[(data & MODE) >> 1], (data & BGEN ? " BGEN" : ""), (data & VARMOD ? " VARMOD" : ""), GET16(tomRam8, VC));
+if (offset == VMODE)\\
+	WriteLog("TOM: Video Mode written by %s: %04X. PWIDTH = %u, MODE = %s, flags:%s%s (VC = %u) (M68K PC = %06X)\n", whoName[who], data, ((data >> 9) & 0x07) + 1, videoMode_to_str[(data & MODE) >> 1], (data & BGEN ? " BGEN" : ""), (data & VARMOD ? " VARMOD" : ""), GET16(tomRam8, VC), m68k_get_reg(NULL, M68K_REG_PC));
 if (offset == BORD1)
 	WriteLog("TOM: Border 1 written by %s: $%04X\n", whoName[who], data);
 if (offset == BORD2)
@@ -1663,6 +1711,7 @@ if (offset == HEQ)
 // TOM Shouldn't be mucking around with this, it's up to the host system to properly
 // handle this kind of crap.
 // NOTE: This is needed somehow, need to get rid of the dependency on this crap.
+//       N.B.: It's used in the rendering functions... So...
 #warning "!!! Need to get rid of this dependency !!!"
 #if 1
 	if ((offset >= 0x28) && (offset <= 0x4F))

@@ -8,9 +8,10 @@
 // JLH = James Hammons <jlhamm@acm.org>
 //
 // Who  When        What
-// ---  ----------  -------------------------------------------------------------
+// ---  ----------  ------------------------------------------------------------
 // JLH  01/16/2010  Created this log ;-)
-// JLH  02/28/2010  Added functions to look inside .ZIP files and handle contents
+// JLH  02/28/2010  Added functions to look inside .ZIP files and handle
+//                  contents
 // JLH  06/01/2012  Added function to check ZIP file CRCs against file DB
 //
 
@@ -23,11 +24,14 @@
 #include "eeprom.h"
 #include "jaguar.h"
 #include "log.h"
-#include "vjag_memory.h"
+#include "memory.h"
 #include "universalhdr.h"
+#include "unzip.h"
+#include "zlib.h"
 
 // Private function prototypes
 
+static int gzfilelength(gzFile gd);
 static bool CheckExtension(const char * filename, const char * ext);
 //static int ParseFileType(uint8_t header1, uint8_t header2, uint32_t size);
 
@@ -58,7 +62,30 @@ uint32_t JaguarLoadROM(uint8_t * &rom, char * path)
 
 	WriteLog("Succeeded in finding extension (%s)!\n", ext);
 	WriteLog("VJ: Loading \"%s\"...", path);
-		FILE *fp = fopen(path, "rb");
+
+	if (strcasecmp(ext, ".zip") == 0)
+	{
+		// Handle ZIP file loading here...
+		WriteLog("(ZIPped)...");
+
+//		uint8_t * buffer = NULL;
+//		romSize = GetFileFromZIP(path, FT_SOFTWARE, buffer);
+		romSize = GetFileFromZIP(path, FT_SOFTWARE, rom);
+
+		if (romSize == 0)
+		{
+			WriteLog("Failed!\n");
+			return 0;
+		}
+
+//		memcpy(rom, buffer, romSize);
+//		delete[] buffer;
+	}
+	else
+	{
+		// Handle gzipped files transparently [Adam Green]...
+
+		gzFile fp = gzopen(path, "rb");
 
 		if (fp == NULL)
 		{
@@ -66,13 +93,12 @@ uint32_t JaguarLoadROM(uint8_t * &rom, char * path)
 			return 0;
 		}
 
-		fseek(fp, 0, SEEK_END);
-        romSize = (uint32_t)ftell(fp);
-        rom = new uint8_t[romSize];
-		fseek(fp, 0, SEEK_SET);
-		fread(rom, 1, romSize, fp);
-		fclose(fp);
-	//}
+		romSize = gzfilelength(fp);
+		rom = new uint8_t[romSize];
+		gzseek(fp, 0, SEEK_SET);
+		gzread(fp, rom, romSize);
+		gzclose(fp);
+	}
 
 	WriteLog("OK (%i bytes)\n", romSize);
 
@@ -82,8 +108,9 @@ uint32_t JaguarLoadROM(uint8_t * &rom, char * path)
 
 //
 // Jaguar file loading
-// We do a more intelligent file analysis here instead of relying on (possible false)
-// file extensions which people don't seem to give two shits about anyway. :-(
+// We do a more intelligent file analysis here instead of relying on (possible
+// false) file extensions which people don't seem to give two shits about
+// anyway. :-(
 //
 bool JaguarLoadFile(char * path)
 {
@@ -262,13 +289,42 @@ bool AlpineLoadFile(char * path)
 	delete[] buffer;
 
 // Maybe instead of this, we could try requiring the STUBULATOR ROM? Just a thought...
-	// Try setting the vector to say, $1000 and putting an instruction there that loops forever:
+	// Try setting the vector to say, $1000 and putting an instruction there
+	// that loops forever:
 	// This kludge works! Yeah!
 	SET32(jaguarMainRAM, 0x10, 0x00001000);		// Set Exception #4 (Illegal Instruction)
 	SET16(jaguarMainRAM, 0x1000, 0x60FE);		// Here: bra Here
 
 	return true;
 }
+
+
+//
+// Get the length of a (possibly) gzipped file
+//
+static int gzfilelength(gzFile gd)
+{
+   int size = 0, length = 0;
+   unsigned char buffer[0x10000];
+
+   gzrewind(gd);
+
+   do
+   {
+      // Read in chunks until EOF
+      size = gzread(gd, buffer, 0x10000);
+
+      if (size <= 0)
+      	break;
+
+      length += size;
+   }
+   while (!gzeof(gd));
+
+   gzrewind(gd);
+   return length;
+}
+
 
 //
 // Compare extension to passed in filename. If equal, return true; otherwise false.
@@ -286,6 +342,167 @@ static bool CheckExtension(const uint8_t * filename, const char * ext)
 
 	return (strcasecmp(filenameExt, ext) == 0 ? true : false);
 }
+
+
+//
+// Get file from .ZIP
+// Returns the size of the file inside the .ZIP file that we're looking at
+// NOTE: If the thing we're looking for is found, it allocates it in the passed in buffer.
+//       Which means we have to deallocate it later.
+//
+uint32_t GetFileFromZIP(const char * zipFile, FileType type, uint8_t * &buffer)
+{
+// NOTE: We could easily check for this by discarding anything that's larger than the RAM/ROM
+//       size of the Jaguar console.
+#warning "!!! FIX !!! Should have sanity checking for ROM size to prevent buffer overflow!"
+	const char ftStrings[5][32] = { "Software", "EEPROM", "Label", "Box Art", "Controller Overlay" };
+//	ZIP * zip = openzip(0, 0, zipFile);
+	FILE * zip = fopen(zipFile, "rb");
+
+	if (zip == NULL)
+	{
+		WriteLog("FILE: Could not open file '%s'!\n", zipFile);
+		return 0;
+	}
+
+//	zipent * ze;
+	ZipFileEntry ze;
+	bool found = false;
+
+	// The order is here is important: If the file is found, we need to short-circuit the
+	// readzip() call because otherwise, 'ze' will be pointing to the wrong file!
+//	while (!found && readzip(zip))
+	while (!found && GetZIPHeader(zip, ze))
+	{
+//		ze = &zip->ent;
+
+		// Here we simply rely on the file extension to tell the truth, but we know
+		// that extensions lie like sons-a-bitches. So this is naive, we need to do
+		// something a little more robust to keep bad things from happening here.
+#warning "!!! Checking for image by extension can be fooled !!!"
+		if ((type == FT_LABEL) && (CheckExtension(ze.filename, ".png") || CheckExtension(ze.filename, ".jpg") || CheckExtension(ze.filename, ".gif")))
+		{
+			found = true;
+			WriteLog("FILE: Found image file '%s'.\n", ze.filename);
+		}
+
+		if ((type == FT_SOFTWARE) && (CheckExtension(ze.filename, ".j64")
+			|| CheckExtension(ze.filename, ".rom") || CheckExtension(ze.filename, ".abs")
+			|| CheckExtension(ze.filename, ".cof") || CheckExtension(ze.filename, ".coff")
+			|| CheckExtension(ze.filename, ".jag")))
+		{
+			found = true;
+			WriteLog("FILE: Found software file '%s'.\n", ze.filename);
+		}
+
+		if ((type == FT_EEPROM) && (CheckExtension(ze.filename, ".eep") || CheckExtension(ze.filename, ".eeprom")))
+		{
+			found = true;
+			WriteLog("FILE: Found EEPROM file '%s'.\n", ze.filename);
+		}
+
+		if (!found)
+			fseek(zip, ze.compressedSize, SEEK_CUR);
+	}
+
+	uint32_t fileSize = 0;
+
+	if (found)
+	{
+		WriteLog("FILE: Uncompressing...");
+// Insert file size sanity check here...
+		buffer = new uint8_t[ze.uncompressedSize];
+
+//		if (readuncompresszip(zip, ze.compressedSize, buffer) == 0)
+//		if (UncompressFileFromZIP(zip, ze.compressedSize, buffer) == 0)
+		if (UncompressFileFromZIP(zip, ze, buffer) == 0)
+		{
+			fileSize = ze.uncompressedSize;
+			WriteLog("success! (%u bytes)\n", fileSize);
+		}
+		else
+		{
+			delete[] buffer;
+			buffer = NULL;
+			WriteLog("FAILED!\n");
+		}
+	}
+	else
+		// Didn't find what we're looking for...
+		WriteLog("FILE: Failed to find file of type %s...\n", ftStrings[type]);
+
+//	closezip(zip);
+	fclose(zip);
+	return fileSize;
+}
+
+
+uint32_t GetFileDBIdentityFromZIP(const char * zipFile)
+{
+	FILE * zip = fopen(zipFile, "rb");
+
+	if (zip == NULL)
+	{
+		WriteLog("FILE: Could not open file '%s'!\n", zipFile);
+		return 0;
+	}
+
+	ZipFileEntry ze;
+
+	// Loop through all files in the zip file under consideration
+	while (GetZIPHeader(zip, ze))
+	{
+		// & loop through all known CRC32s in our file DB to see if it's there!
+		uint32_t index = 0;
+
+		while (romList[index].crc32 != 0xFFFFFF)
+		{
+			if (romList[index].crc32 == ze.crc32)
+			{
+				fclose(zip);
+				return index;
+			}
+
+			index++;
+		}
+
+		// We didn't find it, so skip the compressed data...
+		fseek(zip, ze.compressedSize, SEEK_CUR);
+	}
+
+	fclose(zip);
+	return -1;
+}
+
+
+bool FindFileInZIPWithCRC32(const char * zipFile, uint32_t crc)
+{
+	FILE * zip = fopen(zipFile, "rb");
+
+	if (zip == NULL)
+	{
+		WriteLog("FILE: Could not open file '%s'!\n", zipFile);
+		return 0;
+	}
+
+	ZipFileEntry ze;
+
+	// Loop through all files in the zip file under consideration
+	while (GetZIPHeader(zip, ze))
+	{
+		if (ze.crc32 == crc)
+		{
+			fclose(zip);
+			return true;
+		}
+
+		fseek(zip, ze.compressedSize, SEEK_CUR);
+	}
+
+	fclose(zip);
+	return false;
+}
+
 
 //
 // Parse the file type based upon file size and/or headers.
